@@ -141,13 +141,21 @@ function App() {
     setNodes((nds) => nds.concat(newNode));
   };
 
-  const updateNodeData = (nodeId, newData) => {
+  const updateNodeData = useCallback((nodeId, newData) => {
     setNodes((nds) =>
-      nds.map((node) =>
-        node.id === nodeId ? { ...node, data: { ...node.data, ...newData } } : node
-      )
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          const updatedNode = { ...node, data: { ...node.data, ...newData } };
+          // Atualizar também o nó selecionado se for o mesmo
+          if (selectedNode && selectedNode.id === nodeId) {
+            setSelectedNode(updatedNode);
+          }
+          return updatedNode;
+        }
+        return node;
+      })
     );
-  };
+  }, [selectedNode, setNodes]);
 
   const deleteNode = (nodeId) => {
     setNodes((nds) => nds.filter((node) => node.id !== nodeId));
