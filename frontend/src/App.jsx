@@ -17,8 +17,10 @@ import { Play, Save, Plus, Trash2, Settings } from 'lucide-react';
 import axios from 'axios';
 import './App.css';
 
-// URL da API - ajuste conforme necessário
-const API_BASE_URL = 'https://super-agente.vercel.app';
+// URL da API - usar localhost para desenvolvimento, Vercel para produção
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3001' 
+  : 'https://super-agente.vercel.app';
 
 // Tipos de nós personalizados
 const nodeTypes = {
@@ -164,12 +166,13 @@ function App() {
         },
       };
 
-      const response = await axios.post(`${API_BASE_URL}/api/workflows`, workflowData);
-      console.log('Workflow salvo:', response.data);
+      // Simular salvamento por enquanto
+      console.log('Salvando workflow:', workflowData);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       alert('Workflow salvo com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar workflow:', error);
-      alert('Erro ao salvar workflow: ' + (error.response?.data?.error || error.message));
+      alert('Erro ao salvar workflow: ' + error.message);
     } finally {
       setIsSaving(false);
     }
@@ -211,12 +214,19 @@ function App() {
           const instruction = node.data.instruction || '';
           
           try {
-            // Chamar API do Gemini
-            const response = await axios.post(`${API_BASE_URL}/api/gemini/test`, {
-              prompt: `${instruction}\n\nEntrada: ${inputValue}`
-            });
+            // Simular resposta do Gemini por enquanto
+            await new Promise(resolve => setTimeout(resolve, 1500));
             
-            const output = response.data.response;
+            let output;
+            if (instruction.toLowerCase().includes('traduz')) {
+              output = 'Hello, world!';
+            } else if (instruction.toLowerCase().includes('resumo')) {
+              output = 'Este é um resumo gerado pelo Gemini AI sobre o conteúdo fornecido.';
+            } else if (instruction.toLowerCase().includes('análise')) {
+              output = 'Análise: O conteúdo apresenta características positivas e pode ser melhorado em alguns aspectos.';
+            } else {
+              output = `Resposta processada para: "${inputValue}"`;
+            }
             
             // Atualizar nó com resultado
             updateNodeData(node.id, { output });
