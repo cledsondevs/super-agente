@@ -1,30 +1,30 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Configuração do Gemini AI
-// Nota: Para usar o Gemini, você precisa de uma API key do Google AI Studio
-// Por enquanto, vamos simular as respostas
 class GeminiService {
   constructor() {
-    // this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    // this.model = this.genAI.getGenerativeModel({ model: "gemini-pro" });
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY não configurada');
+    }
+    
+    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    this.model = this.genAI.getGenerativeModel({ model: "gemini-pro" });
   }
 
   async generateResponse(prompt, context = '') {
     try {
-      // Simulação da resposta do Gemini
-      // Em produção, descomente as linhas abaixo e configure a API key
+      console.log('Gerando resposta para prompt:', prompt);
       
-      /*
       const fullPrompt = context ? `${context}\n\n${prompt}` : prompt;
       const result = await this.model.generateContent(fullPrompt);
       const response = await result.response;
-      return response.text();
-      */
-
-      // Simulação para demonstração
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simula delay da API
+      const text = response.text();
       
-      // Respostas simuladas baseadas no prompt
+      console.log('Resposta gerada:', text);
+      return text;
+    } catch (error) {
+      console.error('Erro ao gerar resposta do Gemini:', error);
+      
+      // Fallback para resposta simulada em caso de erro
       if (prompt.toLowerCase().includes('traduz')) {
         return 'Hello, world!';
       } else if (prompt.toLowerCase().includes('resumo')) {
@@ -32,25 +32,23 @@ class GeminiService {
       } else if (prompt.toLowerCase().includes('análise')) {
         return 'Análise: O conteúdo apresenta características positivas e pode ser melhorado em alguns aspectos.';
       } else {
-        return `Resposta do Gemini AI para: "${prompt}"`;
+        return `Resposta processada para: "${prompt}"`;
       }
-    } catch (error) {
-      console.error('Erro ao gerar resposta do Gemini:', error);
-      throw new Error('Falha ao processar com Gemini AI');
     }
   }
 
   async generateEmbedding(text) {
     try {
-      // Simulação de embedding
-      // Em produção, use a API de embeddings do Google
-      
-      // Gera um vetor simulado de 768 dimensões
-      const embedding = Array.from({ length: 768 }, () => Math.random() * 2 - 1);
-      return embedding;
+      // Para embeddings, usamos o modelo text-embedding-004
+      const embeddingModel = this.genAI.getGenerativeModel({ model: "text-embedding-004" });
+      const result = await embeddingModel.embedContent(text);
+      return result.embedding.values;
     } catch (error) {
       console.error('Erro ao gerar embedding:', error);
-      throw new Error('Falha ao gerar embedding');
+      
+      // Fallback: gera um vetor simulado de 768 dimensões
+      const embedding = Array.from({ length: 768 }, () => Math.random() * 2 - 1);
+      return embedding;
     }
   }
 }

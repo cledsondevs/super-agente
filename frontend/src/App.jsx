@@ -17,6 +17,9 @@ import { Play, Save, Plus, Trash2, Settings } from 'lucide-react';
 import axios from 'axios';
 import './App.css';
 
+// URL da API - ajuste conforme necessário
+const API_BASE_URL = 'https://super-agente.vercel.app';
+
 // Tipos de nós personalizados
 const nodeTypes = {
   geminiNode: ({ data }) => (
@@ -32,6 +35,14 @@ const nodeTypes = {
         <div className="text-sm bg-gray-50 p-2 rounded text-wrap break-words">
           {data.instruction || 'Digite uma instrução...'}
         </div>
+        {data.output && (
+          <>
+            <div className="text-xs text-gray-600 mb-2 mt-3">Resultado:</div>
+            <div className="text-sm bg-blue-50 p-2 rounded text-wrap break-words border border-blue-200">
+              {data.output}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   ),
@@ -102,6 +113,7 @@ function App() {
   const [selectedNode, setSelectedNode] = useState(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [executionResults, setExecutionResults] = useState({});
   const reactFlowWrapper = useRef(null);
 
   const onConnect = useCallback(
@@ -115,7 +127,7 @@ function App() {
 
   const addNode = (type) => {
     const newNode = {
-      id: `${nodes.length + 1}`,
+      id: `${Date.now()}`, // Usar timestamp para IDs únicos
       type: type,
       position: { x: Math.random() * 400, y: Math.random() * 400 },
       data: type === 'geminiNode' 
@@ -152,16 +164,12 @@ function App() {
         },
       };
 
-      // Aqui você conectaria com sua API
-      console.log('Salvando workflow:', workflowData);
-      
-      // Simulação de salvamento
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      const response = await axios.post(`${API_BASE_URL}/api/workflows`, workflowData);
+      console.log('Workflow salvo:', response.data);
       alert('Workflow salvo com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar workflow:', error);
-      alert('Erro ao salvar workflow');
+      alert('Erro ao salvar workflow: ' + (error.response?.data?.error || error.message));
     } finally {
       setIsSaving(false);
     }
@@ -169,26 +177,163 @@ function App() {
 
   const executeWorkflow = async () => {
     setIsExecuting(true);
+    setExecutionResults({});
+    
     try {
-      // Simulação de execução
       console.log('Executando workflow...');
       
-      // Simular processamento
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Atualizar resultado do nó de saída
-      const outputNode = nodes.find(node => node.type === 'outputNode');
-      if (outputNode) {
-        updateNodeData(outputNode.id, { result: 'Hello, world!' });
+      // Limpar resultados anteriores
+      setNodes((nds) => nds.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          output: undefined,
+          result: node.type === 'outputNode' ? 'Executando...' : node.data.result
+        }
+      })));
+
+      // Executar nós em sequência baseado nas conexões
+      const sortedNodes = topologicalSort(nodes, edges);
+      let results = {};
+
+      for (const node of sortedNodes) {
+        console.log(`Executando nó ${node.id} (${node.type})`);
+        
+        if (node.type === 'inputNode') {
+          results[node.id] = {
+            type: 'input',
+            value: node.data.value || '',
+            status: 'completed'
+          };
+        } else if (node.type === 'geminiNode') {
+          // Obter entrada dos nós anteriores
+          const inputValue = getInputForNode(node, results, edges);
+          const instruction = node.data.instruction || '';
+          
+          try {
+            // Chamar API do Gemini
+            const response = await axios.post(`${API_BASE_URL}/api/gemini/test`, {
+              prompt: `${instruction}\n\nEntrada: ${inputValue}`
+            });
+            
+            const output = response.data.response;
+            
+            // Atualizar nó com resultado
+            updateNodeData(node.id, { output });
+            
+            results[node.id] = {
+              type: 'gemini',
+              instruction,
+              input: inputValue,
+              output,
+              status: 'completed'
+            };
+          } catch (error) {
+            console.error('Erro ao executar nó Gemini:', error);
+            const errorMsg = 'Erro ao processar com IA';
+            updateNodeData(node.id, { output: errorMsg });
+            results[node.id] = {
+              type: 'gemini',
+              status: 'error',
+              error: errorMsg
+            };
+          }
+        } else if (node.type === 'outputNode') {
+          const inputValue = getInputForNode(node, results, edges);
+          updateNodeData(node.id, { result: inputValue });
+          
+          results[node.id] = {
+            type: 'output',
+            value: inputValue,
+            status: 'completed'
+          };
+        }
+        
+        // Pequeno delay para visualização
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
       
-      alert('Workflow executado com sucesso!');
+      setExecutionResults(results);
+      console.log('Workflow executado com sucesso!', results);
+      
     } catch (error) {
       console.error('Erro ao executar workflow:', error);
-      alert('Erro ao executar workflow');
+      alert('Erro ao executar workflow: ' + error.message);
     } finally {
       setIsExecuting(false);
     }
+  };
+
+  // Função para ordenação topológica
+  const topologicalSort = (nodes, edges) => {
+    const nodeMap = new Map(nodes.map(node => [node.id, node]));
+    const inDegree = new Map();
+    const adjList = new Map();
+
+    // Inicializar
+    nodes.forEach(node => {
+      inDegree.set(node.id, 0);
+      adjList.set(node.id, []);
+    });
+
+    // Construir grafo
+    edges.forEach(edge => {
+      adjList.get(edge.source).push(edge.target);
+      inDegree.set(edge.target, inDegree.get(edge.target) + 1);
+    });
+
+    // Ordenação topológica
+    const queue = [];
+    const result = [];
+
+    // Adicionar nós sem dependências
+    inDegree.forEach((degree, nodeId) => {
+      if (degree === 0) {
+        queue.push(nodeId);
+      }
+    });
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift();
+      result.push(nodeMap.get(nodeId));
+
+      adjList.get(nodeId).forEach(neighbor => {
+        inDegree.set(neighbor, inDegree.get(neighbor) - 1);
+        if (inDegree.get(neighbor) === 0) {
+          queue.push(neighbor);
+        }
+      });
+    }
+
+    return result;
+  };
+
+  // Função para obter entrada de um nó
+  const getInputForNode = (node, results, edges) => {
+    // Encontrar nós que se conectam a este nó
+    const incomingEdges = edges.filter(edge => edge.target === node.id);
+    
+    if (incomingEdges.length === 0) {
+      return '';
+    }
+
+    // Pegar resultado do primeiro nó conectado
+    const sourceNodeId = incomingEdges[0].source;
+    const sourceResult = results[sourceNodeId];
+
+    if (!sourceResult) {
+      return '';
+    }
+
+    if (sourceResult.type === 'input') {
+      return sourceResult.value;
+    } else if (sourceResult.type === 'gemini') {
+      return sourceResult.output;
+    } else if (sourceResult.type === 'output') {
+      return sourceResult.value;
+    }
+
+    return '';
   };
 
   return (
@@ -264,33 +409,35 @@ function App() {
             <div className="mt-8">
               <h3 className="font-semibold mb-4">Propriedades</h3>
               <Card>
-                <CardHeader className="pb-2">
+                <CardHeader>
                   <CardTitle className="text-sm">
-                    {selectedNode.type === 'geminiNode' ? 'Gemini AI' :
-                     selectedNode.type === 'inputNode' ? 'Entrada' : 'Saída'}
+                    {selectedNode.type === 'inputNode' && 'Entrada'}
+                    {selectedNode.type === 'geminiNode' && 'Gemini AI'}
+                    {selectedNode.type === 'outputNode' && 'Saída'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {selectedNode.type === 'inputNode' && (
+                    <div>
+                      <label className="text-xs text-gray-600">Valor:</label>
+                      <Textarea
+                        value={selectedNode.data.value || ''}
+                        onChange={(e) => updateNodeData(selectedNode.id, { value: e.target.value })}
+                        placeholder="Valor de entrada..."
+                        className="mt-1"
+                        rows={3}
+                      />
+                    </div>
+                  )}
                   {selectedNode.type === 'geminiNode' && (
                     <div>
                       <label className="text-xs text-gray-600">Instrução:</label>
                       <Textarea
                         value={selectedNode.data.instruction || ''}
                         onChange={(e) => updateNodeData(selectedNode.id, { instruction: e.target.value })}
-                        placeholder="Digite a instrução para o Gemini..."
+                        placeholder="Digite uma instrução para o Gemini AI..."
                         className="mt-1"
-                        rows={3}
-                      />
-                    </div>
-                  )}
-                  {selectedNode.type === 'inputNode' && (
-                    <div>
-                      <label className="text-xs text-gray-600">Valor:</label>
-                      <Input
-                        value={selectedNode.data.value || ''}
-                        onChange={(e) => updateNodeData(selectedNode.id, { value: e.target.value })}
-                        placeholder="Valor de entrada..."
-                        className="mt-1"
+                        rows={4}
                       />
                     </div>
                   )}
@@ -309,7 +456,7 @@ function App() {
           )}
         </div>
 
-        {/* Canvas principal */}
+        {/* Canvas */}
         <div className="flex-1" ref={reactFlowWrapper}>
           <ReactFlow
             nodes={nodes}
@@ -324,8 +471,8 @@ function App() {
             <Controls />
             <MiniMap />
             <Background variant="dots" gap={12} size={1} />
-            <Panel position="top-left">
-              <div className="bg-white p-2 rounded shadow text-sm">
+            <Panel position="top-center">
+              <div className="bg-white px-4 py-2 rounded-lg shadow-sm border text-sm text-gray-600">
                 Arraste para conectar os nós
               </div>
             </Panel>

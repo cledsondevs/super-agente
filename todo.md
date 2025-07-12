@@ -42,9 +42,10 @@
 - [x] Configurar políticas de acesso públicont
 
 ### Fase 9: Versionamento no GitHub e documentação
-- [ ] Adicionar arquivos ao Git
-- [ ] Realizar commit inicial
-- [ ] Fazer push para o repositório remoto
-- [ ] Criar arquivo README.md com instruções e detalhes do projeto
+- [x] Adicionar arquivos ao Git
+- [x] Fazer commit inicial
+- [x] Fazer push para o GitHub
+- [x] Criar documentação README.md
+- [x] Configurar .gitignoredetalhes do projeto
 
 
