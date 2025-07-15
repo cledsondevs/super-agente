@@ -1,21 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
-const WorkflowExecutor = require('./workflow-executor');
+const GeminiService = require('./gemini');
 const MemoryService = require('./memory');
+const WorkflowExecutor = require('./workflow-executor');
 require('dotenv').config();
 
 const app = express();
-const port = process.env.PORT || 3000;
-
-// Configuração do Supabase
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Serviços
-const workflowExecutor = new WorkflowExecutor();
-const memoryService = new MemoryService();
+const port = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
@@ -25,12 +17,28 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rotas básicas
+// Configurar Supabase
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Variáveis de ambiente do Supabase não configuradas');
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Inicializar serviços
+const geminiService = new GeminiService();
+const memoryService = new MemoryService(supabase);
+const workflowExecutor = new WorkflowExecutor(geminiService, memoryService);
+
+// Rota principal
 app.get('/', (req, res) => {
   res.json({ 
-    message: 'Super Agente API está funcionando!',
-    version: '1.0.0',
-    features: ['workflows', 'gemini-ai', 'memory']
+    message: 'Super Agente API',
+    status: 'online',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -244,6 +252,46 @@ app.get('/api/memory/search', async (req, res) => {
   }
 });
 
+// Rota específica para geração com Gemini AI
+app.post('/api/gemini/generate', async (req, res) => {
+  try {
+    const { prompt, input } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt é obrigatório' });
+    }
+
+    console.log('Recebida solicitação Gemini:', { prompt, input });
+
+    // Construir prompt completo
+    let fullPrompt = prompt;
+    if (input) {
+      fullPrompt = `${prompt}\n\nTexto de entrada: ${input}`;
+    }
+
+    console.log('Prompt completo:', fullPrompt);
+
+    // Gerar resposta usando o Gemini
+    const response = await geminiService.generateResponse(fullPrompt);
+
+    console.log('Resposta do Gemini:', response);
+
+    res.json({ 
+      prompt: fullPrompt,
+      response,
+      input,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Erro ao gerar resposta com Gemini:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: error.message,
+      fallback: true
+    });
+  }
+});
+
 // Rota de teste para Gemini
 app.post('/api/gemini/test', async (req, res) => {
   try {
@@ -253,8 +301,7 @@ app.post('/api/gemini/test', async (req, res) => {
       return res.status(400).json({ error: 'Prompt é obrigatório' });
     }
 
-    const gemini = workflowExecutor.gemini;
-    const response = await gemini.generateResponse(prompt);
+    const response = await geminiService.generateResponse(prompt);
 
     res.json({ prompt, response });
   } catch (error) {
@@ -263,10 +310,26 @@ app.post('/api/gemini/test', async (req, res) => {
   }
 });
 
+// Rota de health check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    services: {
+      supabase: !!supabaseUrl && !!supabaseKey,
+      gemini: !!process.env.GEMINI_API_KEY
+    }
+  });
+});
+
 // Iniciar servidor
 app.listen(port, '0.0.0.0', () => {
   console.log(`Servidor rodando na porta ${port}`);
   console.log(`Acesse: http://localhost:${port}`);
+  console.log('Variáveis de ambiente:');
+  console.log('- SUPABASE_URL:', !!supabaseUrl);
+  console.log('- SUPABASE_SERVICE_ROLE_KEY:', !!supabaseKey);
+  console.log('- GEMINI_API_KEY:', !!process.env.GEMINI_API_KEY);
 });
 
 module.exports = app;

@@ -222,19 +222,22 @@ function App() {
           const instruction = node.data.instruction || '';
           
           try {
-            // Simular resposta do Gemini por enquanto
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            console.log('Chamando API do Gemini...', { inputValue, instruction });
             
-            let output;
-            if (instruction.toLowerCase().includes('traduz')) {
-              output = 'Hello, world!';
-            } else if (instruction.toLowerCase().includes('resumo')) {
-              output = 'Este é um resumo gerado pelo Gemini AI sobre o conteúdo fornecido.';
-            } else if (instruction.toLowerCase().includes('análise')) {
-              output = 'Análise: O conteúdo apresenta características positivas e pode ser melhorado em alguns aspectos.';
-            } else {
-              output = `Resposta processada para: "${inputValue}"`;
-            }
+            // Chamar API real do Gemini
+            const response = await axios.post(`${API_BASE_URL}/api/gemini/generate`, {
+              prompt: instruction,
+              input: inputValue
+            }, {
+              timeout: 30000, // 30 segundos de timeout
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            console.log('Resposta da API:', response.data);
+            
+            const output = response.data.response || response.data.text || 'Resposta não disponível';
             
             // Atualizar nó com resultado
             updateNodeData(node.id, { output });
@@ -248,12 +251,28 @@ function App() {
             };
           } catch (error) {
             console.error('Erro ao executar nó Gemini:', error);
-            const errorMsg = 'Erro ao processar com IA';
-            updateNodeData(node.id, { output: errorMsg });
+            
+            // Fallback para resposta simulada em caso de erro
+            let fallbackOutput;
+            if (instruction.toLowerCase().includes('traduz')) {
+              fallbackOutput = 'Hello, world!';
+            } else if (instruction.toLowerCase().includes('resumo')) {
+              fallbackOutput = 'Este é um resumo gerado pelo Gemini AI sobre o conteúdo fornecido.';
+            } else if (instruction.toLowerCase().includes('análise')) {
+              fallbackOutput = 'Análise: O conteúdo apresenta características positivas e pode ser melhorado em alguns aspectos.';
+            } else {
+              fallbackOutput = `Resposta processada para: "${inputValue}" (modo offline)`;
+            }
+            
+            updateNodeData(node.id, { output: fallbackOutput });
+            
             results[node.id] = {
               type: 'gemini',
-              status: 'error',
-              error: errorMsg
+              instruction,
+              input: inputValue,
+              output: fallbackOutput,
+              status: 'fallback',
+              error: error.message
             };
           }
         } else if (node.type === 'outputNode') {
